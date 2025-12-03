@@ -28,16 +28,9 @@ curl http://localhost:3000/api
 curl http://localhost:3000/metrics
 ```
 
-IaC con Terraform (AKS)
-powershell
-cd .\Practica2\infra\terraform
-terraform init
-terraform apply -auto-approve
-```
-
 CI/CD (GitHub Actions)
 1. `ci`: build + tests + push imagen
 2. `release_env`: despliegue a `release` con `scripts/release-setup.sh`
 3. `release_tests`: pruebas en `RELEASE_URL`
 4. `deploy_prod`: despliegue a `prod`
-5. `monitor_and_rollback`: verifica SLI (p95 y error-rate) y ejecuta `rollback.sh` si falla
+5. `monitor_and_rollback`: verificar si SLI (p95 y error-rate) y ejecutar `rollback.sh` si falla
