@@ -41,8 +41,3 @@ CI/CD (GitHub Actions)
 3. `release_tests`: pruebas en `RELEASE_URL`
 4. `deploy_prod`: despliegue a `prod`
 5. `monitor_and_rollback`: verifica SLI (p95 y error-rate) y ejecuta `rollback.sh` si falla
-
-Configura secretos en GitHub:
-- `REGISTRY_URL`, `REGISTRY_USER`, `REGISTRY_PASSWORD`
-- `K8S_API_SERVER`, `K8S_TOKEN`
-- `RELEASE_URL`, `PROM_URL`
