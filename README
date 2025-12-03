@@ -1,0 +1,63 @@
+# KUBERNETES — Práctica 2: Despliegue Automatizado (Kubernetes + CI/CD + IaC)
+
+## Objetivo
+Configurar un despliegue automatizado nivel profesional usando Kubernetes, CI/CD y Terraform, incluyendo rollback automático basado en métricas:
+- Error-rate > 2%
+- Latencia p95 > 500 ms
+
+## Estructura
+- `infra/terraform/`: AKS y Helm `ingress-nginx`
+- `k8s/`: `deploy.yaml`, `service.yaml`, `ingress.yaml`
+- `app/`: servicio Node.js con `/health`, `/api` y `/metrics`
+- `tests/`: unitarios e integración
+- `scripts/`: `release-setup.sh`, `check-sli.sh`, `rollback.sh`
+- `.github/workflows/cd.yml`: pipeline CI/CD
+
+## Requisitos
+- Docker, kubectl, Terraform
+- Registro de contenedores (`REGISTRY_URL`, `REGISTRY_USER`, `REGISTRY_PASSWORD`)
+- Kubernetes API (`K8S_API_SERVER`, `K8S_Token`)
+- Prometheus (`PROM_URL`)
+
+## Uso local
+```powershell
+docker build -t practica2-app:local -f .\Practica2\Dockerfile .
+docker run -p 3000:3000 practica2-app:local
+curl http://localhost:3000/health
+curl http://localhost:3000/api
+curl http://localhost:3000/metrics
+```
+
+## IaC con Terraform (AKS)
+```powershell
+cd .\Practica2\infra\terraform
+terraform init
+terraform apply -auto-approve
+```
+
+## CI/CD (GitHub Actions)
+1. `ci`: build + tests + push imagen
+2. `release_env`: despliegue a `release` con `scripts/release-setup.sh`
+3. `release_tests`: pruebas en `RELEASE_URL`
+4. `deploy_prod`: despliegue a `prod`
+5. `monitor_and_rollback`: verifica SLI (p95 y error-rate) y ejecuta `rollback.sh` si falla
+
+Configura secretos en GitHub:
+- `REGISTRY_URL`, `REGISTRY_USER`, `REGISTRY_PASSWORD`
+- `K8S_API_SERVER`, `K8S_TOKEN`
+- `RELEASE_URL`, `PROM_URL`
+
+## Evidencia (Video)
+- Muestra el árbol del repo y los archivos clave
+- Ejecuta Terraform (opcional si usas AKS)
+- Demuestra el pipeline en GitHub Actions ejecutándose tras el `git push`
+- Verifica `release` y `prod` (`/health`, `/api`)
+- Muestra la etapa de monitoreo y el rollback automático ante degradación
+
+## Rollback por métricas
+- Umbrales: p95 > 500 ms, error-rate > 2%
+- Fuente: Prometheus (`/metrics` expuesto por la app)
+- Acción: `kubectl rollout undo deployment/app -n prod`
+
+## Licencia
+Uso académico.

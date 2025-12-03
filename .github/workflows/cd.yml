@@ -1,0 +1,97 @@
+name: practica2-cicd-kubernetes
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: practica2-app
+  REGISTRY: ${{ secrets.REGISTRY_URL }}
+  IMAGE_TAG: ${{ github.sha }}
+  K8S_NAMESPACE_RELEASE: release
+  K8S_NAMESPACE_PROD: prod
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        run: |
+          cd Practica2/app
+          npm install
+      - name: Unit tests
+        run: |
+          cd Practica2
+          npm test --prefix app
+      - name: Build image
+        run: |
+          docker login $REGISTRY -u ${{ secrets.REGISTRY_USER }} -p ${{ secrets.REGISTRY_PASSWORD }}
+          docker build -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -f Practica2/Dockerfile .
+          docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+  release_env:
+    needs: [ ci ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v3
+      - name: Kube auth
+        run: |
+          kubectl config set-cluster cluster --server=${{ secrets.K8S_API_SERVER }} --certificate-authority=<CA_PATH>
+          kubectl config set-credentials deployer --token=${{ secrets.K8S_TOKEN }}
+          kubectl config set-context ctx --cluster=cluster --user=deployer
+          kubectl config use-context ctx
+      - name: Release setup
+        run: |
+          cd Practica2
+          chmod +x scripts/release-setup.sh
+          REGISTRY=$REGISTRY IMAGE_NAME=$IMAGE_NAME IMAGE_TAG=$IMAGE_TAG ./scripts/release-setup.sh $K8S_NAMESPACE_RELEASE
+
+  release_tests:
+    needs: [ release_env ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integration tests in release
+        env:
+          RELEASE_URL: ${{ secrets.RELEASE_URL }}
+        run: |
+          cd Practica2
+          npm test --prefix tests
+
+  deploy_prod:
+    needs: [ release_tests ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/setup-kubectl@v3
+      - name: Kube auth
+        run: |
+          kubectl config set-cluster cluster --server=${{ secrets.K8S_API_SERVER }} --certificate-authority=<CA_PATH>
+          kubectl config set-credentials deployer --token=${{ secrets.K8S_TOKEN }}
+          kubectl config set-context ctx --cluster=cluster --user=deployer
+          kubectl config use-context ctx
+      - name: Deploy to prod
+        run: |
+          kubectl create namespace $K8S_NAMESPACE_PROD --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -n $K8S_NAMESPACE_PROD -f Practica2/k8s/service.yaml
+          kubectl apply -n $K8S_NAMESPACE_PROD -f Practica2/k8s/deploy.yaml
+          kubectl set image deployment/app app=$REGISTRY/$IMAGE_NAME:$IMAGE_TAG -n $K8S_NAMESPACE_PROD
+          kubectl apply -n $K8S_NAMESPACE_PROD -f Practica2/k8s/ingress.yaml
+          kubectl rollout status deployment/app -n $K8S_NAMESPACE_PROD
+
+  monitor_and_rollback:
+    needs: [ deploy_prod ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate SLI and rollback if needed
+        env:
+          PROM_URL: ${{ secrets.PROM_URL }}
+        run: |
+          cd Practica2
+          chmod +x scripts/check-sli.sh scripts/rollback.sh
+          ./scripts/check-sli.sh $K8S_NAMESPACE_PROD 10m 0.5 0.02 0.99 || ./scripts/rollback.sh
